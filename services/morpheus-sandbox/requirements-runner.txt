@@ -1,6 +1,6 @@
 # Deployable Vercel Sandbox snapshot dependencies. Legacy FastAPI/LangChain
 # dependencies remain in requirements.txt but are not installed in this image.
-numpy==2.3.2
+numpy==2.5.1
 openpyxl==3.1.5
-pandas==2.3.1
+pandas==3.0.5
 xlrd==2.0.2
