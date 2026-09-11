@@ -1,4 +1,9 @@
+from unittest.mock import Mock
+
 import pytest
+from sqlalchemy.dialects import postgresql, sqlite
+
+from app.platform.repositories import ConversationRepository
 
 
 class DispatchResponse:
@@ -33,6 +38,22 @@ def chat_payload(project_id, request_id="chat-request-0001", text="Revenue?"):
         "user_node_metadata": {"asset_selection": "none"},
         "model": "fast",
     }
+
+
+def test_conversation_lock_targets_only_the_conversation_table():
+    session = Mock()
+
+    ConversationRepository(session).get_owned(
+        "tenant-a",
+        "conversation-a",
+        for_update=True,
+    )
+
+    statement = session.scalar.call_args.args[0]
+    postgres_sql = str(statement.compile(dialect=postgresql.dialect()))
+    sqlite_sql = str(statement.compile(dialect=sqlite.dialect()))
+    assert postgres_sql.rstrip().endswith("FOR UPDATE OF conversations")
+    assert "FOR UPDATE" not in sqlite_sql
 
 
 @pytest.mark.anyio

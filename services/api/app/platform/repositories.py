@@ -462,7 +462,7 @@ class ConversationRepository:
             )
         )
         if for_update:
-            query = query.with_for_update()
+            query = query.with_for_update(of=Conversation)
         return self.session.scalar(query)
 
 
