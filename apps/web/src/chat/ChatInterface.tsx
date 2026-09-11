@@ -1310,7 +1310,7 @@ const ChatInterface = ({ projectId, onProcessedDataChange, onSwitchToDashboard, 
     inputValue,
     isTyping,
     isProcessing,
-    isStreamingWorkflow,
+    workflowStreamState,
     messages,
     uploadedFiles,
     addFiles,
@@ -1562,9 +1562,13 @@ const ChatInterface = ({ projectId, onProcessedDataChange, onSwitchToDashboard, 
   }, [projectId]);
 
   useEffect(() => {
-    // When the SSE workflow stream is live it is the sole source of thinking events;
-    // skip the poller to avoid double-writing the same store field.
-    if (!isProcessing || isStreamingWorkflow || !currentConversationId || !projectId) return;
+    // SSE is the primary source of thinking events; this poller is the fallback
+    // for when it cannot connect. It used to run whenever isStreamingWorkflow was
+    // false, which includes the window between starting a run and the stream
+    // connecting, so every run fired one to three requests that the stream then
+    // made redundant. Gating on the explicit 'fallback' state means it only runs
+    // when the stream has actually given up (or missed its connect deadline).
+    if (!isProcessing || workflowStreamState !== 'fallback' || !currentConversationId || !projectId) return;
     let cancelled = false;
     const controller = new AbortController();
 
@@ -1592,7 +1596,7 @@ const ChatInterface = ({ projectId, onProcessedDataChange, onSwitchToDashboard, 
       controller.abort();
       window.clearInterval(interval);
     };
-  }, [currentConversationId, isProcessing, isStreamingWorkflow, projectId, setThinkingEvents]);
+  }, [currentConversationId, isProcessing, workflowStreamState, projectId, setThinkingEvents]);
 
   // Auto-refresh project assets when uploadedFiles changes (e.g. after GA4/Sheets sync)
   useEffect(() => {

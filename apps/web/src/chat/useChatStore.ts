@@ -290,6 +290,13 @@ interface ChatState {
   thinkingEvents: ThinkingEvent[];
   /** True while an SSE workflow stream is the live source of step/thinking updates. */
   isStreamingWorkflow: boolean;
+  /**
+   * Where the workflow update channel actually is, as opposed to whether SSE
+   * happens to be connected right now. 'connecting' is the window between
+   * starting a run and the stream proving itself; the thinking-events poller
+   * must stay quiet during it, and only take over on 'fallback'.
+   */
+  workflowStreamState: 'idle' | 'connecting' | 'live' | 'fallback';
 
   // UI state
   dropdownOpen: boolean;
@@ -749,6 +756,8 @@ const getPriorWorkflowSteps = (step: string): string[] => {
  * stream cannot connect, its service switches to polling and lets the separate thinking-
  * event poller resume so updates are never lost.
  */
+const STREAM_CONNECT_DEADLINE_MS = 4000;
+
 const runWorkflowUpdates = async (
   assetId: string,
   projectId: string,
@@ -760,6 +769,20 @@ const runWorkflowUpdates = async (
 ): Promise<ProcessingResponse> => {
   if (conversationId) {
     let streamResult;
+    // If the stream has not proved itself within this window, treat it as failed
+    // and let the poller take over. Generous on purpose: a slow connect is far
+    // more common than a broken one, and falling back early costs requests.
+    let connectDeadline: ReturnType<typeof setTimeout> | null = null;
+
+    useChatStore.setState({ workflowStreamState: 'connecting' });
+    connectDeadline = setTimeout(() => {
+      if (useChatStore.getState().workflowStreamState !== 'connecting') return;
+      console.warn(
+        'Workflow stream did not connect within 4s; falling back to polling for thinking events.',
+      );
+      useChatStore.setState({ workflowStreamState: 'fallback' });
+    }, STREAM_CONNECT_DEADLINE_MS);
+
     try {
       streamResult = await streamWorkflow({
         conversationId,
@@ -767,8 +790,14 @@ const runWorkflowUpdates = async (
         assetId,
         abortSignal,
         onStatusUpdate,
-        onConnected: () => useChatStore.setState({ isStreamingWorkflow: true }),
-        onFallbackToPolling: () => useChatStore.setState({ isStreamingWorkflow: false }),
+        onConnected: () => useChatStore.setState({
+          isStreamingWorkflow: true,
+          workflowStreamState: 'live',
+        }),
+        onFallbackToPolling: () => useChatStore.setState({
+          isStreamingWorkflow: false,
+          workflowStreamState: 'fallback',
+        }),
         pollingMaxAttempts: maxAttempts,
         pollingIntervalMs: intervalMs,
         onThinkingEvents: (events) => {
@@ -777,7 +806,11 @@ const runWorkflowUpdates = async (
         },
       });
     } finally {
-      useChatStore.setState({ isStreamingWorkflow: false });
+      // Always clear the deadline. streamWorkflow can resolve without ever
+      // invoking a callback — that is exactly what the store tests mock — and a
+      // timer surviving that would fire against a finished run.
+      if (connectDeadline) clearTimeout(connectDeadline);
+      useChatStore.setState({ isStreamingWorkflow: false, workflowStreamState: 'idle' });
     }
 
     // The stream service may resolve via SSE or its polling fallback.
@@ -1156,6 +1189,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   priorWorkflowSteps: [],
   thinkingEvents: [],
   isStreamingWorkflow: false,
+  workflowStreamState: 'idle',
   dropdownOpen: false,
   selectedDataSource: "",
   isListening: false,
