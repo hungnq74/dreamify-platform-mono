@@ -22,9 +22,10 @@ def normalize_database_url(url: str) -> str:
     candidate = url.strip()
     if candidate.startswith("postgres://"):
         candidate = "postgresql+psycopg://" + candidate[len("postgres://") :]
-    elif candidate.startswith("postgresql://") and "+" not in candidate.split(
-        "://", 1
-    )[0]:
+    elif (
+        candidate.startswith("postgresql://")
+        and "+" not in candidate.split("://", 1)[0]
+    ):
         candidate = "postgresql+psycopg://" + candidate[len("postgresql://") :]
 
     try:
@@ -41,13 +42,9 @@ def normalize_database_url(url: str) -> str:
 class Database:
     def __init__(self, settings: Settings):
         url = normalize_database_url(settings.database_url)
-        connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
-        self.engine: Engine = create_engine(
-            url,
-            poolclass=NullPool,
-            connect_args=connect_args,
-        )
-        if url.startswith("sqlite"):
+        is_sqlite = url.startswith("sqlite")
+        self.engine: Engine = create_engine(url, **self._engine_options(is_sqlite))
+        if is_sqlite:
             event.listen(self.engine, "connect", self._enable_sqlite_foreign_keys)
         self.session_factory = sessionmaker(
             bind=self.engine,
@@ -55,6 +52,45 @@ class Database:
             autoflush=False,
             expire_on_commit=False,
         )
+
+    @staticmethod
+    def _engine_options(is_sqlite: bool) -> dict:
+        """Pool settings, which differ by dialect.
+
+        SQLite keeps NullPool: the test suite runs on a per-test file database
+        and depends on connections not outliving a session.
+
+        PostgreSQL previously also used NullPool, which meant every request paid
+        a full TCP + TLS + SCRAM handshake before its first query. A small pool
+        lets a warm serverless instance reuse its connection instead. The pool
+        stays deliberately tiny because Vercel serves one concurrent request per
+        instance; max_overflow covers the case where a request opens a second
+        session, and pool_timeout turns exhaustion into a fast error rather than
+        a hang.
+
+        pool_pre_ping is what makes pooling safe across a function freeze: a
+        socket that died while the instance was suspended costs one cheap round
+        trip to detect, instead of surfacing as a query error. pool_recycle
+        bounds connection age below the idle timeout of a managed Postgres.
+        """
+        if is_sqlite:
+            return {
+                "poolclass": NullPool,
+                "connect_args": {"check_same_thread": False},
+            }
+        return {
+            "pool_size": 1,
+            "max_overflow": 2,
+            "pool_timeout": 5,
+            "pool_recycle": 300,
+            "pool_pre_ping": True,
+            "connect_args": {
+                "connect_timeout": 5,
+                "application_name": "dreamify-api",
+                "keepalives": 1,
+                "keepalives_idle": 30,
+            },
+        }
 
     @staticmethod
     def _enable_sqlite_foreign_keys(connection, _record) -> None:

@@ -1,6 +1,7 @@
 """Environment-only settings for the Vercel API runtime."""
 
 import json
+import logging
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
@@ -268,6 +269,7 @@ class Settings(BaseSettings):
             raise ValueError("Hosted seed data must run as a deployment step")
         if not self.database_url.startswith(("postgres://", "postgresql://")):
             raise ValueError("Hosted DATABASE_URL must be PostgreSQL")
+        self._warn_on_direct_database_url()
         if not (self.clerk_jwt_public_key or self.clerk_jwks_url):
             raise ValueError("Hosted runtime requires a Clerk public key or JWKS URL")
         if not self.clerk_issuer or not self.clerk_authorized_parties:
@@ -329,6 +331,45 @@ class Settings(BaseSettings):
         if self.auto_create_schema:
             raise ValueError("Hosted schema changes must run through Alembic")
         return self
+
+    def _warn_on_direct_database_url(self) -> None:
+        """Flag a pooled/direct URL setup that is probably misconfigured.
+
+        Request traffic should go through a connection pooler (PgBouncer,
+        Supavisor) while Alembic must reach the database directly — a pooler in
+        transaction mode cannot run DDL reliably. migration_database_url falls
+        back to database_url when direct_database_url is unset, so a deployment
+        that never sets DIRECT_DATABASE_URL silently runs its migrations through
+        the pooler and nothing says so.
+
+        This warns rather than raises on purpose. Turning it into a hard error
+        would refuse to boot any existing deployment that has not set the
+        variable, and CI would not catch that because api.yml exports
+        DIRECT_DATABASE_URL="$DATABASE_URL" for the migration step. Promote it to
+        a ValueError once the deployed environments are confirmed to set it.
+        """
+        message = self.direct_database_url_warning()
+        if message:
+            logging.getLogger(__name__).warning(message)
+
+    def direct_database_url_warning(self) -> Optional[str]:
+        """The warning text, or None when the two endpoints look correct.
+
+        Split out from the logging call so it can be asserted on directly.
+        """
+        if not self.direct_database_url:
+            return (
+                "DIRECT_DATABASE_URL is not set; Alembic will run against "
+                "DATABASE_URL. If that is a pooled endpoint, migrations may fail "
+                "or behave inconsistently."
+            )
+        if self.direct_database_url == self.database_url:
+            return (
+                "DIRECT_DATABASE_URL matches DATABASE_URL; request traffic and "
+                "migrations are sharing one endpoint. Point DATABASE_URL at the "
+                "pooled host and DIRECT_DATABASE_URL at the direct host."
+            )
+        return None
 
     @property
     def migration_database_url(self) -> str:
