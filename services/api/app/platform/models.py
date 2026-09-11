@@ -168,6 +168,7 @@ class BlogPost(TimestampMixin, Base):
 
 class Project(TimestampMixin, Base):
     __tablename__ = "projects"
+    __table_args__ = (Index("ix_projects_created_at_id", "created_at", "id"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     owner_id: Mapped[str] = mapped_column(
@@ -360,6 +361,7 @@ class Asset(TimestampMixin, Base):
 
 class Conversation(TimestampMixin, Base):
     __tablename__ = "conversations"
+    __table_args__ = (Index("ix_conversations_updated_at_id", "updated_at", "id"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     owner_id: Mapped[str] = mapped_column(
@@ -374,6 +376,9 @@ class Conversation(TimestampMixin, Base):
 
 class Dashboard(TimestampMixin, Base):
     __tablename__ = "dashboards"
+    __table_args__ = (
+        Index("ix_dashboards_project_updated_at_id", "project_id", "updated_at", "id"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     owner_id: Mapped[str] = mapped_column(
@@ -470,6 +475,12 @@ class WorkflowRun(TimestampMixin, Base):
         CheckConstraint(
             "provider_call_count BETWEEN 0 AND 5",
             name="ck_workflow_run_provider_call_count",
+        ),
+        Index(
+            "ix_workflow_runs_project_created_at_id",
+            "project_id",
+            "created_at",
+            "id",
         ),
         Index(
             "uq_workflow_runs_owner_active_data",

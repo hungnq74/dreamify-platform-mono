@@ -106,7 +106,7 @@ class ProjectRepository:
                 ProjectMember.user_id == owner_id,
                 ProjectMember.status == "active",
             )
-            .order_by(Project.created_at)
+            .order_by(Project.created_at, Project.id)
         )
         return list(self.session.scalars(query).all())
 
@@ -413,7 +413,7 @@ class ConversationRepository:
                     ),
                 )
             )
-            .order_by(Conversation.updated_at.desc())
+            .order_by(Conversation.updated_at.desc(), Conversation.id.desc())
         )
         return list(self.session.scalars(query).all())
 
@@ -507,7 +507,9 @@ class DashboardRepository:
         if project_id:
             query = query.where(Dashboard.project_id == project_id)
         return list(
-            self.session.scalars(query.order_by(Dashboard.updated_at.desc())).all()
+            self.session.scalars(
+                query.order_by(Dashboard.updated_at.desc(), Dashboard.id.desc())
+            ).all()
         )
 
     def get_owned(
@@ -623,7 +625,9 @@ class WorkflowRepository:
         if project_id:
             query = query.where(WorkflowRun.project_id == project_id)
         return list(
-            self.session.scalars(query.order_by(WorkflowRun.created_at.desc())).all()
+            self.session.scalars(
+                query.order_by(WorkflowRun.created_at.desc(), WorkflowRun.id.desc())
+            ).all()
         )
 
     def get_run(
