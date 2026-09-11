@@ -5,7 +5,8 @@ Project child reads join an active membership in the database query. Historical
 columns remain attribution fields and are not the project access boundary.
 """
 
-from typing import List, Optional
+from datetime import datetime
+from typing import List, Optional, Tuple
 
 from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
@@ -77,6 +78,27 @@ class UserRepository:
     def by_email(self, email: str) -> Optional[AppUser]:
         query = select(AppUser).where(func.lower(AppUser.email) == email.lower())
         return self.session.scalar(query)
+
+
+def _apply_descending_keyset(query, sort_column, id_column, cursor, limit):
+    """Page a newest-first list by (sort key, id).
+
+    Written as explicit or_/and_ rather than a row-value tuple comparison:
+    tuple_() needs SQLite >= 3.15 and compiles differently per dialect, while
+    this form is dialect-neutral and matches the composite indexes added in
+    migration 0010.
+    """
+    if cursor is not None:
+        sort_value, row_id = cursor
+        query = query.where(
+            or_(
+                sort_column < sort_value,
+                and_(sort_column == sort_value, id_column < row_id),
+            )
+        )
+    if limit is not None:
+        query = query.limit(limit)
+    return query
 
 
 class ProjectRepository:
@@ -494,7 +516,11 @@ class DashboardRepository:
         return version
 
     def list_owned(
-        self, owner_id: str, project_id: Optional[str] = None
+        self,
+        owner_id: str,
+        project_id: Optional[str] = None,
+        cursor: Optional[Tuple[datetime, str]] = None,
+        limit: Optional[int] = None,
     ) -> List[Dashboard]:
         query = (
             select(Dashboard)
@@ -506,11 +532,11 @@ class DashboardRepository:
         )
         if project_id:
             query = query.where(Dashboard.project_id == project_id)
-        return list(
-            self.session.scalars(
-                query.order_by(Dashboard.updated_at.desc(), Dashboard.id.desc())
-            ).all()
+        query = query.order_by(Dashboard.updated_at.desc(), Dashboard.id.desc())
+        query = _apply_descending_keyset(
+            query, Dashboard.updated_at, Dashboard.id, cursor, limit
         )
+        return list(self.session.scalars(query).all())
 
     def get_owned(
         self,
@@ -612,7 +638,11 @@ class WorkflowRepository:
         self.session.flush()
 
     def list_runs(
-        self, owner_id: str, project_id: Optional[str] = None
+        self,
+        owner_id: str,
+        project_id: Optional[str] = None,
+        cursor: Optional[Tuple[datetime, str]] = None,
+        limit: Optional[int] = None,
     ) -> List[WorkflowRun]:
         query = (
             select(WorkflowRun)
@@ -624,11 +654,11 @@ class WorkflowRepository:
         )
         if project_id:
             query = query.where(WorkflowRun.project_id == project_id)
-        return list(
-            self.session.scalars(
-                query.order_by(WorkflowRun.created_at.desc(), WorkflowRun.id.desc())
-            ).all()
+        query = query.order_by(WorkflowRun.created_at.desc(), WorkflowRun.id.desc())
+        query = _apply_descending_keyset(
+            query, WorkflowRun.created_at, WorkflowRun.id, cursor, limit
         )
+        return list(self.session.scalars(query).all())
 
     def get_run(
         self,

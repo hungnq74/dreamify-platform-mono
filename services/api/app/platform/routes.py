@@ -13,6 +13,7 @@ from app.platform.auth import (
     require_blob_gateway,
     require_internal_service,
 )
+from app.platform.cursors import decode_cursor
 from app.platform.database import (
     ensure_database_write_capacity,
     get_runtime_settings,
@@ -605,10 +606,28 @@ def create_dashboard(
 @router.get("/dashboards", response_model=List[DashboardRead], tags=["dashboards"])
 def list_dashboards(
     project_id: Optional[str] = Query(default=None),
+    cursor: Optional[str] = Query(
+        default=None,
+        max_length=128,
+        description=(
+            "Opaque keyset cursor. Resume after the last item of the previous "
+            "page; omit to start from the newest."
+        ),
+    ),
+    limit: Optional[int] = Query(default=None, ge=1, le=200),
     session: Session = Depends(get_session),
     user: AppUser = Depends(get_current_user),
 ):
-    return DashboardService(session, user.id).list(project_id)
+    """Dashboards the caller can read, newest first.
+
+    Both parameters are optional and default to the previous unbounded
+    behaviour, so the response stays a bare array and existing callers are
+    unaffected. The cursor is derived client-side from the last item received:
+    every item already carries both the sort key and its id.
+    """
+    return DashboardService(session, user.id).list(
+        project_id, decode_cursor(cursor) if cursor else None, limit
+    )
 
 
 @router.get(
@@ -688,11 +707,29 @@ def create_workflow_run(
 @router.get("/workflow-runs", response_model=List[WorkflowRunRead], tags=["workflows"])
 def list_workflow_runs(
     project_id: Optional[str] = Query(default=None),
+    cursor: Optional[str] = Query(
+        default=None,
+        max_length=128,
+        description=(
+            "Opaque keyset cursor. Resume after the last item of the previous "
+            "page; omit to start from the newest."
+        ),
+    ),
+    limit: Optional[int] = Query(default=None, ge=1, le=200),
     session: Session = Depends(get_session),
     user: AppUser = Depends(get_current_user),
     settings: Settings = Depends(get_runtime_settings),
 ):
-    return WorkflowService(session, user.id, settings).list(project_id)
+    """Workflow runs the caller can read, newest first.
+
+    Both parameters are optional and default to the previous unbounded
+    behaviour, so the response stays a bare array and existing callers are
+    unaffected. The cursor is derived client-side from the last item received:
+    every item already carries both the sort key and its id.
+    """
+    return WorkflowService(session, user.id, settings).list(
+        project_id, decode_cursor(cursor) if cursor else None, limit
+    )
 
 
 @router.get(
@@ -735,11 +772,26 @@ def create_workflow_event(
 )
 def list_workflow_events(
     run_id: str,
+    after: int = Query(
+        default=0,
+        ge=0,
+        description=(
+            "Return only events with a sequence greater than this. Events carry a "
+            "monotonic sequence, so the last one received is the cursor."
+        ),
+    ),
+    limit: Optional[int] = Query(default=None, ge=1, le=500),
     session: Session = Depends(get_session),
     user: AppUser = Depends(get_current_user),
     settings: Settings = Depends(get_runtime_settings),
 ):
-    return WorkflowService(session, user.id, settings).events(run_id)
+    """Events for a run, oldest first.
+
+    Both parameters default to today's unbounded behaviour. The keyset filter
+    they expose already existed in WorkflowRepository.list_events; the route
+    simply never passed anything to it.
+    """
+    return WorkflowService(session, user.id, settings).events(run_id, after, limit)
 
 
 @router.post(

@@ -7,7 +7,7 @@ import json
 import math
 import re
 import zipfile
-from datetime import date, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Literal, Optional, Tuple
 
@@ -1121,10 +1121,15 @@ class DashboardService:
             )
         )
 
-    def list(self, project_id: Optional[str]) -> List[Dashboard]:
+    def list(
+        self,
+        project_id: Optional[str],
+        cursor: Optional[Tuple[datetime, str]] = None,
+        limit: Optional[int] = None,
+    ) -> List[Dashboard]:
         if project_id:
             _require_project(self.session, self.owner_id, project_id)
-        return self.repository.list_owned(self.owner_id, project_id)
+        return self.repository.list_owned(self.owner_id, project_id, cursor, limit)
 
     def get(self, dashboard_id: str, for_update: bool = False) -> Dashboard:
         roles = WRITE_PROJECT_ROLES if for_update else READ_PROJECT_ROLES
@@ -1414,10 +1419,15 @@ class WorkflowService:
             )
         return parent
 
-    def list(self, project_id: Optional[str]) -> List[WorkflowRun]:
+    def list(
+        self,
+        project_id: Optional[str],
+        cursor: Optional[Tuple[datetime, str]] = None,
+        limit: Optional[int] = None,
+    ) -> List[WorkflowRun]:
         if project_id:
             _require_project(self.session, self.owner_id, project_id)
-        return self.repository.list_runs(self.owner_id, project_id)
+        return self.repository.list_runs(self.owner_id, project_id, cursor, limit)
 
     def get(
         self,

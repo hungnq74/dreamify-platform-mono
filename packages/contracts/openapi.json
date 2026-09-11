@@ -8133,6 +8133,7 @@
     },
     "/api/v1/dashboards": {
       "get": {
+        "description": "Dashboards the caller can read, newest first.\n\nBoth parameters are optional and default to the previous unbounded\nbehaviour, so the response stays a bare array and existing callers are\nunaffected. The cursor is derived client-side from the last item received:\nevery item already carries both the sort key and its id.",
         "operationId": "list_dashboards_api_v1_dashboards_get",
         "parameters": [
           {
@@ -8149,6 +8150,43 @@
                 }
               ],
               "title": "Project Id"
+            }
+          },
+          {
+            "description": "Opaque keyset cursor. Resume after the last item of the previous page; omit to start from the newest.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opaque keyset cursor. Resume after the last item of the previous page; omit to start from the newest.",
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
             }
           }
         ],
@@ -12346,6 +12384,7 @@
     },
     "/api/v1/workflow-runs": {
       "get": {
+        "description": "Workflow runs the caller can read, newest first.\n\nBoth parameters are optional and default to the previous unbounded\nbehaviour, so the response stays a bare array and existing callers are\nunaffected. The cursor is derived client-side from the last item received:\nevery item already carries both the sort key and its id.",
         "operationId": "list_workflow_runs_api_v1_workflow_runs_get",
         "parameters": [
           {
@@ -12362,6 +12401,43 @@
                 }
               ],
               "title": "Project Id"
+            }
+          },
+          {
+            "description": "Opaque keyset cursor. Resume after the last item of the previous page; omit to start from the newest.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opaque keyset cursor. Resume after the last item of the previous page; omit to start from the newest.",
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
             }
           }
         ],
@@ -12536,6 +12612,7 @@
     },
     "/api/v1/workflow-runs/{run_id}/events": {
       "get": {
+        "description": "Events for a run, oldest first.\n\nBoth parameters default to today's unbounded behaviour. The keyset filter\nthey expose already existed in WorkflowRepository.list_events; the route\nsimply never passed anything to it.",
         "operationId": "list_workflow_events_api_v1_workflow_runs__run_id__events_get",
         "parameters": [
           {
@@ -12545,6 +12622,37 @@
             "schema": {
               "title": "Run Id",
               "type": "string"
+            }
+          },
+          {
+            "description": "Return only events with a sequence greater than this. Events carry a monotonic sequence, so the last one received is the cursor.",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Return only events with a sequence greater than this. Events carry a monotonic sequence, so the last one received is the cursor.",
+              "minimum": 0,
+              "title": "After",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 500,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
             }
           }
         ],
