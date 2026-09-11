@@ -27,9 +27,7 @@ class CapacitySession:
 def test_database_url_normalizes_postgres_driver_without_exposing_credentials():
     assert normalize_database_url(
         " postgresql://app:encoded%40password@db.example.test:5432/dreamify "
-    ) == (
-        "postgresql+psycopg://app:encoded%40password@db.example.test:5432/dreamify"
-    )
+    ) == ("postgresql+psycopg://app:encoded%40password@db.example.test:5432/dreamify")
 
 
 def test_database_url_rejects_malformed_value_with_actionable_error():
