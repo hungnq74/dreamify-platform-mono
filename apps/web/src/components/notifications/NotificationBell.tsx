@@ -68,15 +68,14 @@ function NotificationItem({ notification, onClose }: { notification: Notificatio
 }
 
 export function NotificationBell() {
-  const { notifications, unreadCount, isLoading, startPolling, stopPolling, markAllRead } = useNotificationStore();
+  const { notifications, unreadCount, isLoading, markAllRead } = useNotificationStore();
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    startPolling();
-    return () => stopPolling();
-  }, [startPolling, stopPolling]);
+  // Polling is owned by the workspace page, not by this component. The bell is
+  // only rendered on one workspace tab, so starting the interval here meant
+  // switching tabs stopped notifications entirely.
 
   // Close on outside click
   useEffect(() => {

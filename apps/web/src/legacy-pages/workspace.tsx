@@ -64,6 +64,7 @@ import { formatToDisplay } from "@/utils/timestamp";
 import { useSubscription } from "@/hooks/useSubscription";
 import HeaderCreditBadge from "@/components/ui/HeaderCreditBadge";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
+import { useNotificationStore } from "@/chat/useNotificationStore";
 import { MetaPixel } from "@/hooks/useMetaPixel";
 import FeedbackModal from "@/components/ui/FeedbackModal";
 import {
@@ -321,6 +322,15 @@ function UnavailableChatIntegrationCard({
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function WorkspacePage() {
+  // Notification polling belongs to the page, not to NotificationBell: the bell
+  // only renders on the "new-chat" tab, so owning the interval there meant
+  // switching tabs stopped notifications until the user switched back.
+  useEffect(() => {
+    const { startPolling, stopPolling } = useNotificationStore.getState();
+    startPolling();
+    return () => stopPolling();
+  }, []);
+
   type MarketplaceTab = "all" | "analytics" | "advertising" | "sales" | "operations" | "finance" | "e-commerce";
   const routeParams = useParams<{ connectorKey?: string; entityId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
