@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "pretest": "npm run build --workspace @dreamify/workflow",
     "test": "vitest run",
-    "check:timestamp": "node scripts/check_timestamp_policy.mjs"
+    "check:timestamp": "node scripts/check_timestamp_policy.mjs",
+    "check:bundle": "node scripts/check-bundle-budget.mjs"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.6.4",

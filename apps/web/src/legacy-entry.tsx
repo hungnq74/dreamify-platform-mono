@@ -8,8 +8,6 @@ import App from "@/App";
 import { DreamifyAuthProvider, useAuth } from "@/lib/clerk";
 import { apiClient } from "@/services/api";
 
-import "react-grid-layout/css/styles.css";
-import "react-resizable/css/styles.css";
 
 function TokenBridge() {
   const { getToken } = useAuth();

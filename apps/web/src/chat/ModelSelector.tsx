@@ -1,6 +1,5 @@
 import React, { useRef, useEffect } from "react";
 import { Zap, Sparkles, ChevronDown, CheckCircle } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
 import { useUser } from "@/lib/clerk";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -78,10 +77,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
                 <Sparkles className="w-4 h-4 text-white animate-pulse-glow" />
               )}
               {selectedModel === 'pro' && (
-                <motion.div
-                  layoutId="pro-glow"
-                  className="absolute inset-0 bg-primary/30 blur-md rounded-full -z-10"
-                />
+                <div className="absolute inset-0 bg-primary/30 blur-md rounded-full -z-10" />
               )}
             </div>
             <span className={`model-selector-adaptive-label font-medium ${adaptiveLabel ? 'text-xs' : ''}`}>
@@ -100,14 +96,13 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
         )}
       </Tooltip>
 
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: placement === 'bottom' ? 10 : -10, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: placement === 'bottom' ? 5 : -5, scale: 0.95 }}
-            transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
-            className={`absolute ${placement === 'bottom' ? 'top-full mt-3' : 'bottom-full mb-3'
+      {/* CSS keyframes instead of framer-motion: this component is reached from the
+          marketing homepage, and it was the last thing keeping framer-motion in the
+          eager bundle. The trade-off is that the menu now closes instantly rather
+          than animating out; the open animation is preserved. */}
+      {isOpen && (
+          <div
+            className={`${placement === 'bottom' ? 'animate-dropdown-in-up' : 'animate-dropdown-in-down'} absolute ${placement === 'bottom' ? 'top-full mt-3' : 'bottom-full mb-3'
               } w-[min(18rem,calc(100vw_-_2rem))] bg-background/95 dark:bg-[#121214]/95 backdrop-blur-xl border border-border dark:border-white/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-20 overflow-hidden ${anchor === 'right' ? 'right-0' : 'left-0'
               }`}
           >
@@ -169,9 +164,8 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
                 Server-enforced data-run cap; live remaining usage is not exposed.
               </p>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+      )}
     </div>
   );
 };

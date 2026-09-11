@@ -146,28 +146,71 @@ export function scheduleCertifiedConnectorOpen(
   return { availability, scheduled: true };
 }
 
-export function useCapabilities() {
-  const [capabilities, setCapabilities] = useState(FALLBACK_CAPABILITIES);
-  const [isLoading, setIsLoading] = useState(true);
+// Capabilities are one server-wide answer, but the hook is called by many
+// components at once — six of them on the marketing homepage alone — and each
+// instance used to issue its own cache:"no-store" request on mount. These
+// module-level values collapse that into one request whose result every
+// instance shares, the same dedupe useProjects already does for its list.
+let cachedCapabilities: DreamifyCapabilities | null = null;
+let inFlight: Promise<void> | null = null;
+const subscribers = new Set<(value: DreamifyCapabilities) => void>();
 
-  const refresh = useCallback(async () => {
+async function loadCapabilities(force: boolean): Promise<void> {
+  if (!force && cachedCapabilities) return;
+  if (inFlight) return inFlight;
+
+  inFlight = (async () => {
     try {
       const response = await api.get<unknown>("/api/v1/capabilities", {
         headers: { Accept: "application/json" },
         cache: "no-store",
       });
       if (!response.success || !response.data) return;
-      setCapabilities(normalizeCapabilities(response.data as ApiCapabilities));
+      cachedCapabilities = normalizeCapabilities(response.data as ApiCapabilities);
+      subscribers.forEach((notify) => notify(cachedCapabilities as DreamifyCapabilities));
     } catch {
       // A frontend-only preview remains usable with the locked Hobby defaults.
     } finally {
-      setIsLoading(false);
+      inFlight = null;
     }
+  })();
+
+  return inFlight;
+}
+
+export function useCapabilities() {
+  const [capabilities, setCapabilities] = useState(
+    cachedCapabilities ?? FALLBACK_CAPABILITIES,
+  );
+  const [isLoading, setIsLoading] = useState(cachedCapabilities === null);
+
+  const refresh = useCallback(async () => {
+    await loadCapabilities(true);
+    setIsLoading(false);
   }, []);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    const notify = (value: DreamifyCapabilities) => setCapabilities(value);
+    subscribers.add(notify);
+
+    if (cachedCapabilities) {
+      setCapabilities(cachedCapabilities);
+      setIsLoading(false);
+    } else {
+      void loadCapabilities(false).then(() => setIsLoading(false));
+    }
+
+    return () => {
+      subscribers.delete(notify);
+    };
+  }, []);
 
   return { capabilities, isLoading, refresh };
+}
+
+/** Test seam: drops the shared cache so each test starts from a known state. */
+export function resetCapabilitiesCache(): void {
+  cachedCapabilities = null;
+  inFlight = null;
+  subscribers.clear();
 }

@@ -1,5 +1,7 @@
 import {
   Fragment,
+  lazy,
+  Suspense,
   useRef,
   useEffect,
   useState,
@@ -42,7 +44,16 @@ import type { ChartChipData } from "../components/chat/ChartPreviewChip";
 import type { SelectChartContextDetail } from "@/types/chartEdit";
 import { ChatVisualArtifact } from "@/components/chat/ChatVisualArtifact";
 import { ChartChangeSummaryCard } from "@/components/chat/ChartChangeSummaryCard";
-import { ActivityPanel } from "@/components/project-section/ActivityPanel";
+// Lazy at the import site, not inside ActivityPanel itself: ActivityPanel pulls
+// in react-syntax-highlighter (via ThinkingEventTimeline -> PythonCodeBlock,
+// which calls registerLanguage at module scope), and PythonCodeBlock.test.tsx
+// and ActivityPanel.test.tsx are byte-pinned by the test migration ledger and
+// render those modules synchronously. Splitting here leaves both untouched.
+const ActivityPanel = lazy(() =>
+  import("@/components/project-section/ActivityPanel").then((m) => ({
+    default: m.ActivityPanel,
+  })),
+);
 import {
   ClarificationInputOverlay,
 } from "@/components/chat/ClarificationInputOverlay";
@@ -2502,10 +2513,12 @@ const ChatInterface = ({ projectId, onProcessedDataChange, onSwitchToDashboard, 
   return (
     <div className="flex flex-col h-full min-h-0 bg-muted">
       {chatPaneView === "activity" ? (
-        <ActivityPanel
-          variant="embedded"
-          onClose={() => setChatPaneView("chat")}
-        />
+        <Suspense fallback={null}>
+          <ActivityPanel
+            variant="embedded"
+            onClose={() => setChatPaneView("chat")}
+          />
+        </Suspense>
       ) : (
         <>
 

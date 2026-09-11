@@ -1,5 +1,9 @@
 import { useState, useEffect, useMemo, useRef, useCallback, type CSSProperties } from "react";
 import { Responsive, WidthProvider, Layouts, Layout } from "react-grid-layout";
+// Imported here rather than at the SPA root so marketing pages, which never
+// render a dashboard grid, do not download this CSS.
+import "react-grid-layout/css/styles.css";
+import "react-resizable/css/styles.css";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Loader2, ChevronDown, ChevronUp, MoreVertical, GripVertical, MessageSquare, ImageDown, Trash2, Pencil, CalendarDays, Sparkles, History } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";

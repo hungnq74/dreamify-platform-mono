@@ -40,3 +40,6 @@ jobs:
       - run: npm run typecheck
       - run: npm run test
       - run: npm run build
+      # Guards the initial JS payload. Without it, one eager import in App.tsx
+      # silently puts the workspace and admin bundles back on every page.
+      - run: npm run check:bundle --workspace @dreamify/web

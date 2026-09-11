@@ -84,6 +84,8 @@ export default {
         animation: {
           'accordion-down': 'accordion-down 0.2s ease-out',
           'accordion-up': 'accordion-up 0.2s ease-out',
+          'dropdown-in-up': 'dropdown-in-up 0.2s cubic-bezier(0.23, 1, 0.32, 1)',
+          'dropdown-in-down': 'dropdown-in-down 0.2s cubic-bezier(0.23, 1, 0.32, 1)',
           'fade-in': 'fade-in 0.5s ease-out',
           'slide-up': 'slide-up 0.4s ease-out',
           'scale-in': 'scale-in 0.3s ease-out',
@@ -105,6 +107,26 @@ export default {
             },
             to: {
               height: '0'
+            }
+          },
+          'dropdown-in-up': {
+            '0%': {
+              opacity: '0',
+              transform: 'translateY(10px) scale(0.95)'
+            },
+            '100%': {
+              opacity: '1',
+              transform: 'translateY(0) scale(1)'
+            }
+          },
+          'dropdown-in-down': {
+            '0%': {
+              opacity: '0',
+              transform: 'translateY(-10px) scale(0.95)'
+            },
+            '100%': {
+              opacity: '1',
+              transform: 'translateY(0) scale(1)'
             }
           },
           'fade-in': {
