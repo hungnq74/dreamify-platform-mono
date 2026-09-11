@@ -41,9 +41,12 @@ function notifyAll() {
   subscribers.forEach(fn => fn());
 }
 
-// Apply theme immediately on module load (complements the inline script in
-// main.tsx, but ensures the hook and DOM stay in sync from the first render).
-applyTheme(moduleTheme === 'system' ? getSystemTheme() : moduleTheme);
+// No module-load applyTheme() call here on purpose. The bootstrap script in
+// app/layout.tsx runs the same resolution before first paint, and each hook
+// instance re-applies on mount via the resolvedTheme effect below, so doing it
+// again during import was redundant — and a side effect on import makes this
+// module order-dependent. (The comment this replaces referenced an inline script
+// in main.tsx, which no longer exists under the Next app.)
 
 export function useTheme() {
   // forceUpdate is the only per-instance state — it triggers a re-render when

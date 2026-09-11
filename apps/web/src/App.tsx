@@ -3,6 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Routes, Route, useLocation, Navigate } from "@/lib/navigation";
+import { isAppShellPath } from "@/lib/route-manifest";
 import { SignedIn, SignedOut, AuthenticateWithRedirectCallback, useAuth } from "@/lib/clerk";
 import ReactGA from "react-ga4";
 import { useEffect } from "react";
@@ -74,7 +75,26 @@ import FirebaseIntegrationModal from "./components/chat/FirebaseIntegrationModal
 import WarehouseIntegrationModal from "./components/chat/WarehouseIntegrationModal";
 import AllConnectorsModal from "./components/chat/AllConnectorsModal";
 
-const queryClient = new QueryClient();
+// Module scope is safe here: App is only ever reached through the ssr:false
+// dynamic import in app/legacy-route.tsx, so this client never runs on the server.
+//
+// Defaults are explicit rather than inherited. Every consumer today is an
+// admin, blog or CMS list; run status, credits and notifications go through SSE
+// and zustand, not React Query, so none of them depend on these values.
+// useProjects overrides refetchOnWindowFocus — that is the one list where
+// refetching on focus is genuinely wanted.
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      gcTime: 300_000,
+      refetchOnWindowFocus: false,
+      refetchOnMount: false,
+      refetchOnReconnect: true,
+      retry: 1,
+    },
+  },
+});
 
 // Polar integration uses hosted checkout, no client-side initialization needed here
 
@@ -92,19 +112,13 @@ const AppContent = () => {
   // Meta Pixel pageview tracking
   useMetaPixel();
 
-  const isAppPath =
-    location.pathname.startsWith("/workspace") ||
-    location.pathname.startsWith("/admin") ||
-    location.pathname.startsWith("/preview") ||
-    location.pathname.startsWith("/templates") ||
-    location.pathname === "/feedback";
+  const isAppPath = isAppShellPath(location.pathname);
 
+  // The initial value is already set before first paint by the bootstrap script
+  // in app/layout.tsx; this only reconciles client-side navigations, which never
+  // re-run that script.
   useEffect(() => {
-    if (isAppPath) {
-      document.documentElement.classList.remove("font-marketing");
-    } else {
-      document.documentElement.classList.add("font-marketing");
-    }
+    document.documentElement.classList.toggle("font-marketing", !isAppPath);
   }, [isAppPath]);
 
   const isAuthPath = location.pathname === "/login" || location.pathname === "/signup";

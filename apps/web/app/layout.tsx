@@ -2,13 +2,21 @@ import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 
 import { assertHostedWebEnvironment } from "@/server/runtime-env";
+import { APP_SHELL_PATH_PATTERN } from "@/lib/route-manifest";
 
 import "@/index.css";
 
 assertHostedWebEnvironment();
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://dreamify-web.vercel.app";
-const themeInitScript = `
+
+// Runs before first paint. The theme half was already here; the font-marketing
+// half is new. The SPA is loaded with ssr:false, so without this the root
+// font-size stayed at its 15px default until App.tsx's effect ran after
+// hydration, and every marketing page visibly reflowed from 15px to 14px.
+// The pattern is imported rather than duplicated so it cannot drift from the
+// client-side navigation handler in App.tsx.
+const bootstrapScript = `
   (function () {
     try {
       var theme = localStorage.getItem("dreamify-theme") || "light";
@@ -16,6 +24,10 @@ const themeInitScript = `
       var isDark = theme === "dark" || (theme === "system" && prefersDark);
       document.documentElement.classList.toggle("dark", isDark);
       document.documentElement.classList.toggle("light", !isDark);
+    } catch (_) {}
+    try {
+      var isAppShell = ${APP_SHELL_PATH_PATTERN.toString()}.test(window.location.pathname);
+      document.documentElement.classList.toggle("font-marketing", !isAppShell);
     } catch (_) {}
   })();
 `;
@@ -52,7 +64,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap"
           rel="stylesheet"
         />
-        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        <script dangerouslySetInnerHTML={{ __html: bootstrapScript }} />
       </head>
       <body>{children}</body>
     </html>

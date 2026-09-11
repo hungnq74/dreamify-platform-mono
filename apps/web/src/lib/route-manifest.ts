@@ -76,6 +76,24 @@ export function isPrivateRoute(route: string): boolean {
   return /^(workspace|admin|preview|templates|feedback|sso-callback|zalo-upload)(\/|$)/.test(route);
 }
 
+/**
+ * Pathnames that render the signed-in app shell, which uses the 15px root
+ * font-size; everything else is marketing at 14px (see `html.font-marketing`
+ * in index.css).
+ *
+ * Deliberately distinct from isPrivateRoute, which also covers sso-callback and
+ * zalo-upload. This pattern takes a leading-slash *pathname*, not a route key,
+ * because it is shared verbatim with the pre-paint inline script in
+ * app/layout.tsx — that script sets the class before first paint so the page no
+ * longer reflows from 15px to 14px after hydration. App.tsx reuses it for
+ * client-side navigations, so the two can never drift apart.
+ */
+export const APP_SHELL_PATH_PATTERN = /^\/(?:workspace|admin|preview|templates)|^\/feedback$/;
+
+export function isAppShellPath(pathname: string): boolean {
+  return APP_SHELL_PATH_PATTERN.test(pathname);
+}
+
 export function isNoIndexRoute(route: string): boolean {
   if (isPrivateRoute(route)) return true;
   if (/^(login|signup)(\/|$)/.test(route)) return true;
