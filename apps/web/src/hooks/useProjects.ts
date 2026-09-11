@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useCallback, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth, useUser } from "@/lib/clerk";
 import { useToast } from "@/hooks/use-toast";
 import { projectService, ProjectRecord } from "@/services/projectService";
 import { useChatStore } from "@/chat/useChatStore";
 import { useNavigate } from "@/lib/navigation";
-import { settleProjectRefresh } from "./projectRefresh";
 
 export interface Project {
     id: string;
@@ -21,11 +21,7 @@ type RefreshOptions = {
 
 const PROJECTS_STALE_MS = 60_000;
 
-let cachedUserId: string | null = null;
-let cachedProjects: Project[] = [];
-let cachedAt = 0;
-let inFlightRefresh: Promise<Project[]> | null = null;
-let inFlightUserId: string | null = null;
+const projectsQueryKey = (userId: string) => ["projects", userId] as const;
 
 const parseDate = (value?: string | null) => {
     if (!value) return 0;
@@ -42,6 +38,10 @@ const mapProject = (project: ProjectRecord): Project => ({
 
 // Map + sort ALL of the user's projects newest-first. No cap — the workspace
 // sidebar shows the full list and scrolls.
+//
+// This sort is load-bearing and must stay: GET /projects orders by created_at
+// ASC server-side, which is not the order the sidebar wants. It is also why
+// /projects is currently excluded from cursor pagination.
 const mapProjects = (projects: ProjectRecord[]): Project[] => (
     projects
         .map(mapProject)
@@ -52,156 +52,89 @@ const mapProjects = (projects: ProjectRecord[]): Project[] => (
         })
 );
 
-const getCachedProjects = (userId: string | null) => (
-    userId && cachedUserId === userId ? cachedProjects : []
-);
+const EMPTY_PROJECTS: Project[] = [];
 
-const hasProjectCache = (userId: string | null) => (
-    Boolean(userId && cachedUserId === userId && cachedAt > 0)
-);
-
-const setProjectCache = (userId: string, projects: Project[]) => {
-    cachedUserId = userId;
-    cachedProjects = projects;
-    cachedAt = Date.now();
-};
-
-const clearProjectCache = () => {
-    cachedUserId = null;
-    cachedProjects = [];
-    cachedAt = 0;
-    inFlightRefresh = null;
-    inFlightUserId = null;
-};
-
+/**
+ * Projects for the signed-in user.
+ *
+ * This used to keep its own module-level cache, staleness clock, in-flight
+ * dedupe and focus/visibility listeners — about 120 lines reimplementing what
+ * React Query already provides, on mutable globals that needed an explicit
+ * clearProjectCache to stop one user's list leaking to the next.
+ *
+ * Keying the query on the user id makes that leak structurally impossible, and
+ * React Query keeps the last successful data when a refetch fails, which is the
+ * behaviour settleProjectRefresh was added to provide.
+ */
 export const useProjects = () => {
     const { isSignedIn } = useAuth();
     const { user } = useUser();
     const { toast } = useToast();
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
     const userId = user?.id ?? null;
+    const enabled = Boolean(isSignedIn && userId);
 
-    const [projects, setProjects] = useState<Project[]>(() => getCachedProjects(userId));
-    const [isLoading, setIsLoading] = useState(false);
-    const projectsRef = useRef(projects);
+    const query = useQuery({
+        queryKey: projectsQueryKey(userId ?? "anonymous"),
+        queryFn: async () => {
+            const response = await projectService.listProjects();
+            if (!response.success) {
+                throw new Error(response.error || "Failed to fetch projects");
+            }
+            return mapProjects(response.projects);
+        },
+        enabled,
+        staleTime: PROJECTS_STALE_MS,
+        // Overrides the app-wide default from App.tsx. The sidebar is the one
+        // list where coming back to the tab should show current data.
+        refetchOnWindowFocus: true,
+        refetchOnMount: true,
+    });
 
     useEffect(() => {
-        projectsRef.current = projects;
-    }, [projects]);
+        if (query.error) {
+            const message = query.error instanceof Error
+                ? query.error.message
+                : String(query.error);
+            console.warn('Project refresh failed; using cached projects:', message);
+        }
+    }, [query.error]);
+
+    const projects = query.data ?? EMPTY_PROJECTS;
 
     const refreshProjects = useCallback(async (options: RefreshOptions = {}) => {
-        if (!isSignedIn || !userId) {
-            clearProjectCache();
-            setProjects([]);
-            setIsLoading(false);
-            return [];
+        if (!enabled || !userId) return EMPTY_PROJECTS;
+
+        // invalidateQueries resolves only once the refetch settles, which the
+        // mutations below rely on: they navigate as soon as it returns.
+        if (options.force) {
+            await queryClient.invalidateQueries({
+                queryKey: projectsQueryKey(userId),
+            });
+            return queryClient.getQueryData<Project[]>(
+                projectsQueryKey(userId),
+            ) ?? EMPTY_PROJECTS;
         }
 
-        const cacheForUser = getCachedProjects(userId);
-        const hasCache = hasProjectCache(userId);
-        const isFresh = hasCache && Date.now() - cachedAt < PROJECTS_STALE_MS;
+        const result = await query.refetch();
+        return result.data ?? EMPTY_PROJECTS;
+    }, [enabled, userId, queryClient, query]);
 
-        if (!options.force && isFresh) {
-            setProjects(cacheForUser);
-            setIsLoading(false);
-            return cacheForUser;
-        }
-
-        if (options.dedupe !== false && inFlightRefresh && inFlightUserId === userId) {
-            if (!hasCache && projectsRef.current.length === 0) {
-                setIsLoading(true);
-            }
-            const result = await inFlightRefresh;
-            setProjects(result);
-            setIsLoading(false);
-            return result;
-        }
-
-        const shouldShowLoading = options.showLoading ?? (!hasCache && projectsRef.current.length === 0);
-        if (shouldShowLoading) {
-            setIsLoading(true);
-        }
-
-        const request = settleProjectRefresh(
-            projectService.listProjects().then((response) => {
-                if (!response.success) {
-                    throw new Error(response.error || "Failed to fetch projects");
-                }
-                const mappedProjects = mapProjects(response.projects);
-                setProjectCache(userId, mappedProjects);
-                return mappedProjects;
-            }),
-            () => projectsRef.current,
-            (error) => {
-                const message = error instanceof Error ? error.message : String(error);
-                console.warn('Project refresh failed; using cached projects:', message);
-            },
-        );
-
-        inFlightRefresh = request;
-        inFlightUserId = userId;
-
-        try {
-            const mappedProjects = await request;
-            setProjects(mappedProjects);
-            return mappedProjects;
-        } finally {
-            if (inFlightRefresh === request) {
-                inFlightRefresh = null;
-                inFlightUserId = null;
-            }
-            setIsLoading(false);
-        }
-    }, [isSignedIn, userId]);
-
-    // Initial fetch: hydrate from cache immediately, then refresh only when stale.
+    // Other parts of the app announce a change by dispatching this event rather
+    // than importing the hook, so it stays.
     useEffect(() => {
-        if (!isSignedIn || !userId) {
-            clearProjectCache();
-            setProjects([]);
-            setIsLoading(false);
-            return;
-        }
-
-        const cacheForUser = getCachedProjects(userId);
-        const hasCache = hasProjectCache(userId);
-        if (hasCache) {
-            setProjects(cacheForUser);
-            setIsLoading(false);
-        }
-
-        refreshProjects({ showLoading: !hasCache });
-    }, [isSignedIn, userId, refreshProjects]);
-
-    // Refresh on focus/visibility without replacing an existing list with a spinner.
-    useEffect(() => {
-        const handleVisibilityChange = () => {
-            if (!document.hidden && isSignedIn) {
-                refreshProjects({ showLoading: false });
-            }
-        };
-
-        const handleFocus = () => {
-            if (isSignedIn) {
-                refreshProjects({ showLoading: false });
-            }
-        };
-
+        if (!enabled || !userId) return;
         const handleProjectUpdated = () => {
-            if (isSignedIn) {
-                refreshProjects({ force: true, showLoading: false });
-            }
+            void queryClient.invalidateQueries({
+                queryKey: projectsQueryKey(userId),
+            });
         };
-
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        window.addEventListener('focus', handleFocus);
         window.addEventListener('projectUpdated', handleProjectUpdated);
-        return () => {
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-            window.removeEventListener('focus', handleFocus);
-            window.removeEventListener('projectUpdated', handleProjectUpdated);
-        };
-    }, [isSignedIn, refreshProjects]);
+        return () => window.removeEventListener('projectUpdated', handleProjectUpdated);
+    }, [enabled, userId, queryClient]);
+
+    const isLoading = query.isLoading;
 
     const createNewProject = async (title: string = "Untitled Project") => {
         try {
